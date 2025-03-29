@@ -4,6 +4,7 @@ python-dotenv==1.0.0
 elevenlabs
 numpy
 openai
+pyaudio
 PyPDF2
 websocket-client==1.7.0
 gunicorn==21.2.0

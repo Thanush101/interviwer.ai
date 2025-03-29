@@ -3,6 +3,7 @@ import signal
 import sys
 from elevenlabs.client import ElevenLabs
 from elevenlabs.conversational_ai.conversation import Conversation, ConversationInitiationData
+from elevenlabs.conversational_ai.default_audio_interface import DefaultAudioInterface
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from flask_sock import Sock
@@ -71,7 +72,7 @@ class Interview:
         self.api_key = api_key
         self.resume = resume
         self.job_description = job_description
-        self.audio_interface = WebSocketAudioInterface(ws)
+        self.ws = ws
         self.running = True
         self.question_count = 0
         self.max_questions = 7
@@ -93,7 +94,7 @@ class Interview:
                 self.agent_id,
                 config=config,
                 requires_auth=bool(self.api_key),
-                audio_interface=self.audio_interface,
+                audio_interface=DefaultAudioInterface(),
                 callback_agent_response=self.handle_agent_response,
                 callback_user_transcript=lambda transcript: print(f"User: {transcript}"),
             )
