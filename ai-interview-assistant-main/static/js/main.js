@@ -30,7 +30,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Start speaking animation
             avatar.classList.add('speaking');
 
-            const response = await fetch('http://localhost:8080/offer', {
+            const response = await fetch('/offer', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -66,7 +66,7 @@ document.addEventListener('DOMContentLoaded', () => {
             
             const agentId = document.getElementById('agentId').value;
             
-            const response = await fetch('http://localhost:8080/cancel', {
+            const response = await fetch('/cancel', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
