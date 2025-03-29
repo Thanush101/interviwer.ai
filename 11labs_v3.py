@@ -1,6 +1,7 @@
 import os
 import signal
 import sys
+import psutil
 from elevenlabs.client import ElevenLabs
 from elevenlabs.conversational_ai.conversation import Conversation, ConversationInitiationData
 from elevenlabs.conversational_ai.default_audio_interface import DefaultAudioInterface
@@ -12,10 +13,17 @@ import time
 import json
 import base64
 import logging
+import gc
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+# Memory monitoring
+def log_memory_usage():
+    process = psutil.Process(os.getpid())
+    memory_info = process.memory_info()
+    logger.info(f"Memory usage: {memory_info.rss / 1024 / 1024:.2f} MB")
 
 app = Flask(__name__)
 CORS(app)
@@ -33,7 +41,18 @@ class WebSocketAudioInterface:
         self._is_recording = False
         self._input_callback = None
         self._buffer = []
-        self._max_buffer_size = 100
+        self._max_buffer_size = 10  # Reduced buffer size
+        self._last_cleanup = time.time()
+        self._cleanup_interval = 60  # Cleanup every 60 seconds
+
+    def _cleanup(self):
+        """Clean up old messages and force garbage collection."""
+        current_time = time.time()
+        if current_time - self._last_cleanup > self._cleanup_interval:
+            self._buffer.clear()
+            gc.collect()
+            self._last_cleanup = current_time
+            log_memory_usage()
 
     def play_audio(self, audio_data):
         """Send audio data through WebSocket."""
@@ -57,6 +76,10 @@ class WebSocketAudioInterface:
             # Send immediately if we're recording
             self.ws.send(json.dumps(message))
             logger.debug(f"Sent audio data of length: {len(audio_base64)}")
+            
+            # Cleanup periodically
+            self._cleanup()
+            
         except Exception as e:
             logger.error(f"Error sending audio: {e}")
 
@@ -64,12 +87,14 @@ class WebSocketAudioInterface:
         """Start recording audio."""
         self._is_recording = True
         self._input_callback = input_callback
+        self._buffer.clear()  # Clear buffer when starting
         logger.debug("Started recording audio")
 
     def stop(self):
         """Stop recording audio."""
         self._is_recording = False
         self._input_callback = None
+        self._buffer.clear()  # Clear buffer when stopping
         logger.debug("Stopped recording audio")
 
     def is_recording(self):
@@ -87,7 +112,17 @@ class Interview:
         self.question_count = 0
         self.max_questions = 7
         self.audio_interface = WebSocketAudioInterface(ws)
+        self._last_activity = time.time()
         logger.info(f"Created new interview session for agent {agent_id}")
+
+    def _check_timeout(self):
+        """Check if the interview has timed out."""
+        current_time = time.time()
+        if current_time - self._last_activity > 300:  # 5 minutes timeout
+            logger.warning(f"Interview timed out for agent {self.agent_id}")
+            self.running = False
+            return True
+        return False
 
     def run(self):
         try:
@@ -114,7 +149,10 @@ class Interview:
             logger.info(f"Started conversation session for agent {self.agent_id}")
             
             while self.running and self.question_count < self.max_questions:
+                if self._check_timeout():
+                    break
                 time.sleep(0.1)
+                gc.collect()  # Force garbage collection periodically
             
             if self.question_count >= self.max_questions:
                 logger.info("Interview completed - maximum questions reached")
@@ -132,8 +170,10 @@ class Interview:
             if self.agent_id in active_websockets:
                 del active_websockets[self.agent_id]
                 logger.info(f"Cleaned up WebSocket for agent {self.agent_id}")
+            gc.collect()  # Force garbage collection on cleanup
 
     def handle_agent_response(self, response):
+        self._last_activity = time.time()  # Update last activity time
         logger.info(f"Agent: {response}")
         self.question_count += 1
         if self.question_count >= self.max_questions:
@@ -162,17 +202,23 @@ def handle_websocket(ws, agent_id):
                     interview = active_threads[agent_id]
                     if interview.audio_interface._input_callback and interview.audio_interface.is_recording():
                         interview.audio_interface._input_callback(message['data'])
+                        interview._last_activity = time.time()  # Update last activity time
                         logger.debug(f"Processed audio data for agent {agent_id}")
             except json.JSONDecodeError as e:
                 logger.error(f"Invalid JSON received: {e}")
             except Exception as e:
                 logger.error(f"Error processing WebSocket message: {e}")
+            
+            # Force garbage collection periodically
+            gc.collect()
+            
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
     finally:
         if agent_id in active_websockets:
             del active_websockets[agent_id]
             logger.info(f"Cleaned up WebSocket connection for agent {agent_id}")
+        gc.collect()  # Force garbage collection on cleanup
 
 @app.route('/offer', methods=['POST'])
 def handle_offer():

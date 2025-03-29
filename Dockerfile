@@ -29,6 +29,10 @@ EXPOSE 8080
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONHASHSEED=random
 ENV PYTHONASYNCIODEBUG=1
+ENV PYTHONGC=1
+ENV PYTHONMALLOC=malloc
+ENV MALLOC_TRIM_THRESHOLD_=131072
+ENV MALLOC_MMAP_THRESHOLD_=131072
 
 # Command to run the application with optimized settings
-CMD ["gunicorn", "--worker-class", "gevent", "--workers", "1", "--bind", "0.0.0.0:8080", "--timeout", "300", "--keep-alive", "5", "--max-requests", "1000", "--max-requests-jitter", "50", "--log-level", "debug", "11labs_v3:app"] 
+CMD ["gunicorn", "--worker-class", "gevent", "--workers", "1", "--bind", "0.0.0.0:8080", "--timeout", "300", "--keep-alive", "5", "--max-requests", "1000", "--max-requests-jitter", "50", "--log-level", "debug", "--worker-tmp-dir", "/dev/shm", "--worker-connections", "1000", "11labs_v3:app"] 

@@ -1,1 +1,1 @@
-web: gunicorn --worker-class gevent --workers 1 --bind 0.0.0.0:$PORT --timeout 300 --keep-alive 5 --max-requests 1000 --max-requests-jitter 50 --log-level debug 11labs_v3:app 
+web: gunicorn --worker-class gevent --workers 1 --bind 0.0.0.0:$PORT --timeout 300 --keep-alive 5 --max-requests 1000 --max-requests-jitter 50 --log-level debug --worker-tmp-dir /dev/shm --worker-connections 1000 --preload 11labs_v3:app 

@@ -12,4 +12,5 @@ pydantic>=2.7.0
 fastapi>=0.100.0
 flask-sock==0.7.0
 gevent==24.2.1
-gevent-websocket==0.10.1 
+gevent-websocket==0.10.1
+psutil==5.9.8 
