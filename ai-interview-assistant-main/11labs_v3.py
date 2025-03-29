@@ -3,13 +3,13 @@ import signal
 import sys
 from elevenlabs.client import ElevenLabs
 from elevenlabs.conversational_ai.conversation import Conversation, ConversationInitiationData
-from elevenlabs.conversational_ai.default_audio_interface import DefaultAudioInterface
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from flask_sock import Sock
 import threading
 import time
 import json
+import base64
 
 resume = """Thanush is a Python Developer with 1 years of experience in building and optimizing scalable applications.
 He specializes in developing backend solutions, integrating RESTful APIs, and managing databases efficiently.
@@ -30,13 +30,48 @@ app.config['STATIC_FOLDER'] = 'static'
 active_threads = {}
 active_websockets = {}
 
+class WebSocketAudioInterface:
+    def __init__(self, ws):
+        self.ws = ws
+        self._is_recording = False
+        self._input_callback = None
+
+    def play_audio(self, audio_data):
+        """Send audio data through WebSocket."""
+        try:
+            if isinstance(audio_data, bytes):
+                audio_base64 = base64.b64encode(audio_data).decode('utf-8')
+            else:
+                audio_base64 = audio_data
+            
+            self.ws.send(json.dumps({
+                'type': 'audio',
+                'data': audio_base64
+            }))
+        except Exception as e:
+            print(f"Error sending audio: {e}")
+
+    def start(self, input_callback):
+        """Start recording audio."""
+        self._is_recording = True
+        self._input_callback = input_callback
+
+    def stop(self):
+        """Stop recording audio."""
+        self._is_recording = False
+        self._input_callback = None
+
+    def is_recording(self):
+        """Check if currently recording."""
+        return self._is_recording
+
 class Interview:
     def __init__(self, agent_id, api_key, resume, job_description, ws):
         self.agent_id = agent_id
         self.api_key = api_key
         self.resume = resume
         self.job_description = job_description
-        self.ws = ws
+        self.audio_interface = WebSocketAudioInterface(ws)
         self.running = True
         self.question_count = 0
         self.max_questions = 7
@@ -58,7 +93,7 @@ class Interview:
                 self.agent_id,
                 config=config,
                 requires_auth=bool(self.api_key),
-                audio_interface=DefaultAudioInterface(),
+                audio_interface=self.audio_interface,
                 callback_agent_response=self.handle_agent_response,
                 callback_user_transcript=lambda transcript: print(f"User: {transcript}"),
             )
@@ -99,6 +134,15 @@ def handle_websocket(ws, agent_id):
             data = ws.receive()
             if data is None:
                 break
+            # Handle incoming audio data if needed
+            try:
+                message = json.loads(data)
+                if message.get('type') == 'audio' and agent_id in active_threads:
+                    interview = active_threads[agent_id]
+                    if interview.audio_interface._input_callback and interview.audio_interface.is_recording():
+                        interview.audio_interface._input_callback(message['data'])
+            except Exception as e:
+                print(f"Error processing WebSocket message: {e}")
     except Exception as e:
         print(f"WebSocket error: {e}")
     finally:
