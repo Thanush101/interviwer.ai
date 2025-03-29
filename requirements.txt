@@ -1,0 +1,15 @@
+Flask==3.0.0
+Flask-Cors==4.0.0
+python-dotenv==1.0.0
+elevenlabs
+numpy
+openai
+pyaudio
+PyPDF2
+websocket-client==1.7.0
+gunicorn==21.2.0
+pydantic>=2.7.0
+fastapi>=0.100.0
+flask-sock==0.7.0
+gevent==24.2.1
+gevent-websocket==0.10.1 
