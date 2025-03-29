@@ -6,8 +6,10 @@ from elevenlabs.conversational_ai.conversation import Conversation, Conversation
 from elevenlabs.conversational_ai.default_audio_interface import DefaultAudioInterface
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
+from flask_sock import Sock
 import threading
 import time
+import json
 
 resume = """Thanush is a Python Developer with 1 years of experience in building and optimizing scalable applications.
 He specializes in developing backend solutions, integrating RESTful APIs, and managing databases efficiently.
@@ -20,18 +22,21 @@ job_description= """Data Analyst: Extract, analyze, and interpret data to drive 
 
 app = Flask(__name__)
 CORS(app)
+sock = Sock(app)
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['STATIC_FOLDER'] = 'static'
 
 # Store active interviews in memory (note: this will reset on serverless function cold starts)
 active_threads = {}
+active_websockets = {}
 
 class Interview:
-    def __init__(self, agent_id, api_key, resume, job_description):
+    def __init__(self, agent_id, api_key, resume, job_description, ws):
         self.agent_id = agent_id
         self.api_key = api_key
         self.resume = resume
         self.job_description = job_description
+        self.ws = ws
         self.running = True
         self.question_count = 0
         self.max_questions = 7
@@ -73,6 +78,8 @@ class Interview:
         finally:
             if self.agent_id in active_threads:
                 del active_threads[self.agent_id]
+            if self.agent_id in active_websockets:
+                del active_websockets[self.agent_id]
 
     def handle_agent_response(self, response):
         print(f"Agent: {response}")
@@ -83,6 +90,20 @@ class Interview:
 @app.route('/')
 def index():
     return render_template('index.html')
+
+@sock.route('/ws/<agent_id>')
+def handle_websocket(ws, agent_id):
+    active_websockets[agent_id] = ws
+    try:
+        while True:
+            data = ws.receive()
+            if data is None:
+                break
+    except Exception as e:
+        print(f"WebSocket error: {e}")
+    finally:
+        if agent_id in active_websockets:
+            del active_websockets[agent_id]
 
 @app.route('/offer', methods=['POST'])
 def handle_offer():
@@ -95,8 +116,11 @@ def handle_offer():
     if not agent_id or not api_key or not resume or not job_description:
         return jsonify({'error': 'Agent ID, API Key, Resume, and Job Description are required'}), 400
     
+    if agent_id not in active_websockets:
+        return jsonify({'error': 'WebSocket connection not established'}), 400
+    
     # Create and start interview
-    interview = Interview(agent_id, api_key, resume, job_description)
+    interview = Interview(agent_id, api_key, resume, job_description, active_websockets[agent_id])
     thread = threading.Thread(target=interview.run)
     active_threads[agent_id] = interview
     thread.start()

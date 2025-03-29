@@ -5,9 +5,58 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusDiv = document.getElementById('status');
     const avatar = document.getElementById('interviewer-avatar');
     let conversationId = null;
+    let ws = null;
+    let audioContext = null;
+    let audioQueue = [];
+    let isPlaying = false;
 
     // Disable cancel button initially
     cancelButton.disabled = true;
+
+    // Initialize audio context
+    function initAudioContext() {
+        if (!audioContext) {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        }
+    }
+
+    // Play audio from base64 data
+    async function playAudio(base64Data) {
+        if (!audioContext) {
+            initAudioContext();
+        }
+
+        const audioData = atob(base64Data);
+        const arrayBuffer = new ArrayBuffer(audioData.length);
+        const view = new Uint8Array(arrayBuffer);
+        for (let i = 0; i < audioData.length; i++) {
+            view[i] = audioData.charCodeAt(i);
+        }
+
+        try {
+            const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+            const source = audioContext.createBufferSource();
+            source.buffer = audioBuffer;
+            source.connect(audioContext.destination);
+            source.start(0);
+            return new Promise(resolve => {
+                source.onended = resolve;
+            });
+        } catch (error) {
+            console.error('Error playing audio:', error);
+        }
+    }
+
+    // Process audio queue
+    async function processAudioQueue() {
+        if (isPlaying || audioQueue.length === 0) return;
+        
+        isPlaying = true;
+        const audioData = audioQueue.shift();
+        await playAudio(audioData);
+        isPlaying = false;
+        processAudioQueue();
+    }
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -24,39 +73,84 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             showStatus('Starting interview...');
-            startButton.disabled = true;
-            cancelButton.disabled = false;
             
-            // Start speaking animation
-            avatar.classList.add('speaking');
-
-            const response = await fetch('/offer', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    agentId: agentId,
-                    apiKey: apiKey,
-                    resume: resume,
-                    jobDescription: jobDescription,
-                    sdp: 'offer'
-                })
-            });
-
-            const data = await response.json();
+            // Initialize WebSocket connection first
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/ws/${agentId}`;
+            ws = new WebSocket(wsUrl);
             
-            if (response.ok) {
-                showStatus('Interview started successfully');
-                conversationId = data.conversationId;
-            } else {
-                throw new Error(data.error || 'Failed to start interview');
-            }
+            ws.onopen = async () => {
+                try {
+                    startButton.disabled = true;
+                    cancelButton.disabled = false;
+                    avatar.classList.add('speaking');
+
+                    const response = await fetch('/offer', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({
+                            agentId: agentId,
+                            apiKey: apiKey,
+                            resume: resume,
+                            jobDescription: jobDescription,
+                            sdp: 'offer'
+                        })
+                    });
+
+                    const data = await response.json();
+                    
+                    if (response.ok) {
+                        showStatus('Interview started successfully');
+                        conversationId = data.conversationId;
+                    } else {
+                        throw new Error(data.error || 'Failed to start interview');
+                    }
+                } catch (error) {
+                    showError(error.message);
+                    startButton.disabled = false;
+                    cancelButton.disabled = true;
+                    avatar.classList.remove('speaking');
+                    ws.close();
+                }
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'audio') {
+                        audioQueue.push(data.data);
+                        processAudioQueue();
+                    }
+                } catch (error) {
+                    console.error('Error processing message:', error);
+                }
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+                showError('Connection error occurred');
+                startButton.disabled = false;
+                cancelButton.disabled = true;
+                avatar.classList.remove('speaking');
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket connection closed');
+                avatar.classList.remove('speaking');
+                startButton.disabled = false;
+                cancelButton.disabled = true;
+            };
+
         } catch (error) {
             showError(error.message);
             startButton.disabled = false;
             cancelButton.disabled = true;
             avatar.classList.remove('speaking');
+            if (ws) {
+                ws.close();
+            }
         }
     });
 
@@ -65,6 +159,19 @@ document.addEventListener('DOMContentLoaded', () => {
             showStatus('Canceling interview...');
             
             const agentId = document.getElementById('agentId').value;
+            
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+
+            if (audioContext) {
+                await audioContext.close();
+                audioContext = null;
+            }
+
+            audioQueue = [];
+            isPlaying = false;
             
             const response = await fetch('/cancel', {
                 method: 'POST',
