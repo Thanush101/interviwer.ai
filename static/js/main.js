@@ -10,6 +10,7 @@ document.addEventListener('DOMContentLoaded', () => {
     let audioQueue = [];
     let isPlaying = false;
     let wsConnected = false;
+    let connectionPromise = null;
 
     // Disable cancel button initially
     cancelButton.disabled = true;
@@ -62,12 +63,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize WebSocket connection
     function initWebSocket(agentId) {
         return new Promise((resolve, reject) => {
+            if (ws) {
+                ws.close();
+            }
+
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws/${agentId}`;
+            console.log('Connecting to WebSocket:', wsUrl);
+            
             ws = new WebSocket(wsUrl);
+            
+            // Set a connection timeout
+            const timeout = setTimeout(() => {
+                if (!wsConnected) {
+                    ws.close();
+                    reject(new Error('WebSocket connection timeout'));
+                }
+            }, 5000);
             
             ws.onopen = () => {
                 console.log('WebSocket connection established');
+                clearTimeout(timeout);
                 wsConnected = true;
                 resolve();
             };
@@ -75,6 +91,7 @@ document.addEventListener('DOMContentLoaded', () => {
             ws.onmessage = (event) => {
                 try {
                     const data = JSON.parse(event.data);
+                    console.log('Received WebSocket message:', data);
                     if (data.type === 'connection' && data.status === 'established') {
                         console.log('WebSocket connection confirmed');
                         wsConnected = true;
@@ -89,12 +106,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
             ws.onerror = (error) => {
                 console.error('WebSocket error:', error);
+                clearTimeout(timeout);
                 wsConnected = false;
                 reject(error);
             };
 
-            ws.onclose = () => {
-                console.log('WebSocket connection closed');
+            ws.onclose = (event) => {
+                console.log('WebSocket connection closed:', event.code, event.reason);
+                clearTimeout(timeout);
                 wsConnected = false;
                 avatar.classList.remove('speaking');
                 startButton.disabled = false;
@@ -126,6 +145,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error('Failed to establish WebSocket connection');
             }
 
+            // Wait a moment to ensure connection is fully established
+            await new Promise(resolve => setTimeout(resolve, 1000));
+
             showStatus('Starting interview...');
             startButton.disabled = true;
             cancelButton.disabled = false;
@@ -154,6 +176,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(data.error || 'Failed to start interview');
             }
         } catch (error) {
+            console.error('Error:', error);
             showError(error.message);
             startButton.disabled = false;
             cancelButton.disabled = true;
@@ -206,6 +229,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error(data.error || 'Failed to cancel interview');
             }
         } catch (error) {
+            console.error('Error:', error);
             showError(error.message);
         }
     });

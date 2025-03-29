@@ -187,6 +187,18 @@ def index():
 @sock.route('/ws/<agent_id>')
 def handle_websocket(ws, agent_id):
     logger.info(f"New WebSocket connection for agent {agent_id}")
+    
+    # Clean up any existing connections for this agent
+    if agent_id in active_websockets:
+        try:
+            active_websockets[agent_id].close()
+        except:
+            pass
+        del active_websockets[agent_id]
+    
+    if agent_id in websocket_states:
+        del websocket_states[agent_id]
+    
     websocket_states[agent_id] = {'connected': True, 'last_activity': time.time()}
     active_websockets[agent_id] = ws
     
@@ -229,6 +241,10 @@ def handle_websocket(ws, agent_id):
         websocket_states[agent_id]['connected'] = False
     finally:
         if agent_id in active_websockets:
+            try:
+                active_websockets[agent_id].close()
+            except:
+                pass
             del active_websockets[agent_id]
             logger.info(f"Cleaned up WebSocket connection for agent {agent_id}")
         if agent_id in websocket_states:
@@ -255,6 +271,13 @@ def handle_offer():
     if agent_id not in active_websockets:
         logger.error(f"No WebSocket instance found for agent {agent_id}")
         return jsonify({'error': 'WebSocket connection not established'}), 400
+    
+    # Verify WebSocket is still open
+    try:
+        active_websockets[agent_id].send(json.dumps({'type': 'ping'}))
+    except Exception as e:
+        logger.error(f"WebSocket connection lost for agent {agent_id}: {e}")
+        return jsonify({'error': 'WebSocket connection lost'}), 400
     
     # Create and start interview
     interview = Interview(agent_id, api_key, resume, job_description, active_websockets[agent_id])
