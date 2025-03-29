@@ -183,6 +183,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
 
+            
             const data = await response.json();
             
             if (response.ok) {
