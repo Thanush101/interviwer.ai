@@ -64,25 +64,27 @@ document.addEventListener('DOMContentLoaded', () => {
     function initWebSocket(agentId) {
         return new Promise((resolve, reject) => {
             if (ws) {
+                console.log('Closing existing WebSocket connection');
                 ws.close();
             }
 
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/ws/${agentId}`;
-            console.log('Connecting to WebSocket:', wsUrl);
+            console.log('Attempting to connect to WebSocket:', wsUrl);
             
             ws = new WebSocket(wsUrl);
             
             // Set a connection timeout
             const timeout = setTimeout(() => {
                 if (!wsConnected) {
+                    console.log('WebSocket connection timeout');
                     ws.close();
                     reject(new Error('WebSocket connection timeout'));
                 }
-            }, 5000);
+            }, 10000); // Increased timeout to 10 seconds
             
             ws.onopen = () => {
-                console.log('WebSocket connection established');
+                console.log('WebSocket connection opened');
                 clearTimeout(timeout);
                 wsConnected = true;
                 resolve();
@@ -93,9 +95,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     const data = JSON.parse(event.data);
                     console.log('Received WebSocket message:', data);
                     if (data.type === 'connection' && data.status === 'established') {
-                        console.log('WebSocket connection confirmed');
+                        console.log('WebSocket connection confirmed by server');
                         wsConnected = true;
                     } else if (data.type === 'audio') {
+                        console.log('Received audio data');
                         audioQueue.push(data.data);
                         processAudioQueue();
                     }
@@ -137,6 +140,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         try {
             showStatus('Establishing connection...');
+            console.log('Starting connection process...');
             
             // Initialize WebSocket connection first
             await initWebSocket(agentId);
@@ -145,14 +149,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 throw new Error('Failed to establish WebSocket connection');
             }
 
+            console.log('WebSocket connected, waiting for confirmation...');
             // Wait a moment to ensure connection is fully established
-            await new Promise(resolve => setTimeout(resolve, 1000));
+            await new Promise(resolve => setTimeout(resolve, 2000));
 
             showStatus('Starting interview...');
             startButton.disabled = true;
             cancelButton.disabled = false;
             avatar.classList.add('speaking');
 
+            console.log('Sending offer request...');
             const response = await fetch('/offer', {
                 method: 'POST',
                 headers: {
@@ -167,7 +173,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 })
             });
 
+            console.log('Received response:', response.status);
             const data = await response.json();
+            console.log('Response data:', data);
             
             if (response.ok) {
                 showStatus('Interview started successfully');

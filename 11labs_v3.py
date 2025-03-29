@@ -186,14 +186,15 @@ def index():
 
 @sock.route('/ws/<agent_id>')
 def handle_websocket(ws, agent_id):
-    logger.info(f"New WebSocket connection for agent {agent_id}")
+    logger.info(f"New WebSocket connection request for agent {agent_id}")
     
     # Clean up any existing connections for this agent
     if agent_id in active_websockets:
         try:
+            logger.info(f"Cleaning up existing WebSocket connection for agent {agent_id}")
             active_websockets[agent_id].close()
-        except:
-            pass
+        except Exception as e:
+            logger.error(f"Error closing existing connection: {e}")
         del active_websockets[agent_id]
     
     if agent_id in websocket_states:
@@ -204,12 +205,13 @@ def handle_websocket(ws, agent_id):
     
     try:
         # Send initial connection confirmation
+        logger.info(f"Sending connection confirmation to agent {agent_id}")
         ws.send(json.dumps({
             'type': 'connection',
             'status': 'established',
             'agent_id': agent_id
         }))
-        logger.info(f"Sent connection confirmation for agent {agent_id}")
+        logger.info(f"Connection confirmation sent for agent {agent_id}")
         
         while True:
             try:
@@ -222,6 +224,8 @@ def handle_websocket(ws, agent_id):
                 
                 # Handle incoming audio data if needed
                 message = json.loads(data)
+                logger.debug(f"Received message from agent {agent_id}: {message.get('type', 'unknown')}")
+                
                 if message.get('type') == 'audio' and agent_id in active_threads:
                     interview = active_threads[agent_id]
                     if interview.audio_interface._input_callback and interview.audio_interface.is_recording():
@@ -229,22 +233,23 @@ def handle_websocket(ws, agent_id):
                         interview._last_activity = time.time()  # Update last activity time
                         logger.debug(f"Processed audio data for agent {agent_id}")
             except json.JSONDecodeError as e:
-                logger.error(f"Invalid JSON received: {e}")
+                logger.error(f"Invalid JSON received from agent {agent_id}: {e}")
             except Exception as e:
-                logger.error(f"Error processing WebSocket message: {e}")
+                logger.error(f"Error processing WebSocket message from agent {agent_id}: {e}")
             
             # Force garbage collection periodically
             gc.collect()
             
     except Exception as e:
-        logger.error(f"WebSocket error: {e}")
+        logger.error(f"WebSocket error for agent {agent_id}: {e}")
         websocket_states[agent_id]['connected'] = False
     finally:
         if agent_id in active_websockets:
             try:
+                logger.info(f"Closing WebSocket connection for agent {agent_id}")
                 active_websockets[agent_id].close()
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"Error closing WebSocket connection: {e}")
             del active_websockets[agent_id]
             logger.info(f"Cleaned up WebSocket connection for agent {agent_id}")
         if agent_id in websocket_states:
