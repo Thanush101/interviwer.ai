@@ -25,5 +25,10 @@ COPY . .
 # Expose the port the app runs on
 EXPOSE 8080
 
-# Command to run the application with gevent worker and proper timeouts
-CMD ["gunicorn", "--worker-class", "gevent", "--workers", "1", "--bind", "0.0.0.0:8080", "--timeout", "120", "--keep-alive", "5", "11labs_v3:app"] 
+# Set environment variables for better memory management
+ENV PYTHONUNBUFFERED=1
+ENV PYTHONHASHSEED=random
+ENV PYTHONASYNCIODEBUG=1
+
+# Command to run the application with optimized settings
+CMD ["gunicorn", "--worker-class", "gevent", "--workers", "1", "--bind", "0.0.0.0:8080", "--timeout", "300", "--keep-alive", "5", "--max-requests", "1000", "--max-requests-jitter", "50", "--log-level", "debug", "11labs_v3:app"] 
