@@ -34,6 +34,7 @@ app.config['STATIC_FOLDER'] = 'static'
 # Store active interviews in memory (note: this will reset on serverless function cold starts)
 active_threads = {}
 active_websockets = {}
+websocket_states = {}  # Track WebSocket connection states
 
 class WebSocketAudioInterface:
     def __init__(self, ws):
@@ -186,15 +187,26 @@ def index():
 @sock.route('/ws/<agent_id>')
 def handle_websocket(ws, agent_id):
     logger.info(f"New WebSocket connection for agent {agent_id}")
+    websocket_states[agent_id] = {'connected': True, 'last_activity': time.time()}
     active_websockets[agent_id] = ws
     
     try:
+        # Send initial connection confirmation
+        ws.send(json.dumps({
+            'type': 'connection',
+            'status': 'established',
+            'agent_id': agent_id
+        }))
+        logger.info(f"Sent connection confirmation for agent {agent_id}")
+        
         while True:
             try:
                 data = ws.receive()
                 if data is None:
                     logger.info(f"WebSocket connection closed for agent {agent_id}")
                     break
+                
+                websocket_states[agent_id]['last_activity'] = time.time()
                 
                 # Handle incoming audio data if needed
                 message = json.loads(data)
@@ -214,10 +226,13 @@ def handle_websocket(ws, agent_id):
             
     except Exception as e:
         logger.error(f"WebSocket error: {e}")
+        websocket_states[agent_id]['connected'] = False
     finally:
         if agent_id in active_websockets:
             del active_websockets[agent_id]
             logger.info(f"Cleaned up WebSocket connection for agent {agent_id}")
+        if agent_id in websocket_states:
+            del websocket_states[agent_id]
         gc.collect()  # Force garbage collection on cleanup
 
 @app.route('/offer', methods=['POST'])
@@ -232,8 +247,13 @@ def handle_offer():
         logger.error("Missing required fields in offer request")
         return jsonify({'error': 'Agent ID, API Key, Resume, and Job Description are required'}), 400
     
-    if agent_id not in active_websockets:
+    # Check if WebSocket is connected and active
+    if agent_id not in websocket_states or not websocket_states[agent_id]['connected']:
         logger.error(f"No active WebSocket connection for agent {agent_id}")
+        return jsonify({'error': 'WebSocket connection not established'}), 400
+    
+    if agent_id not in active_websockets:
+        logger.error(f"No WebSocket instance found for agent {agent_id}")
         return jsonify({'error': 'WebSocket connection not established'}), 400
     
     # Create and start interview
