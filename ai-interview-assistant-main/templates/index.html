@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview Assistant</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/styles.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>AI Interview Assistant</h1>
+        <div class="avatar-container">
+            <div class="avatar" id="interviewer-avatar">
+                <div class="avatar-circle">
+                    <div class="avatar-icon">AI</div>
+                </div>
+                <div class="glow-effect"></div>
+            </div>
+        </div>
+        <form id="interviewForm">
+            <div class="form-group">
+                <label for="agentId">Agent ID:</label>
+                <input type="text" id="agentId" name="agentId" required>
+            </div>
+            <div class="form-group">
+                <label for="apiKey">API Key:</label>
+                <input type="password" id="apiKey" name="apiKey" required>
+            </div>
+            <div class="form-group">
+                <label for="resume">Resume:</label>
+                <textarea id="resume" name="resume" placeholder="Paste your resume here..." required></textarea>
+            </div>
+            <div class="form-group">
+                <label for="jobDescription">Job Description:</label>
+                <textarea id="jobDescription" name="jobDescription" placeholder="Paste the job description here..." required></textarea>
+            </div>
+            <button type="submit" id="startButton">Start Interview</button>
+            <button type="button" id="cancelButton" class="cancel-button">Cancel Interview</button>
+        </form>
+        <div id="status" class="status"></div>
+    </div>
+    <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+</body>
+</html>
