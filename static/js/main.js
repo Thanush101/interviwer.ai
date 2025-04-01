@@ -168,8 +168,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     agentId: agentId,
                     apiKey: apiKey,
                     resume: resume,
-                    jobDescription: jobDescription,
-                    sdp: 'offer'
+                    jobDescription: jobDescription
                 })
             });
 
